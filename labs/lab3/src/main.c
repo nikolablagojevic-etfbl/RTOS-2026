@@ -52,7 +52,6 @@ void* insertSource(void* source) {
 
             if (strcmp(input, "q") == 0) {
             sem_post(&semEnd);
-            sem_post(&semEnd);
             sem_post(&semAdder);
             sem_post(&semReader);
             element = -1;
@@ -108,20 +107,26 @@ void* addNums(void* buffers) {
                 int b = sourceBuffer->array[(++sourceBuffer->tail) % RING_SIZE];
                 int result;
                 if(a == -1 || b == -1) {
-                    sem_post(&semReader);
-                    break;
+                    result = -1;
                 } else {
                     result = a+b;
                 }
 
-                sem_post(&semInsert);
                 pthread_mutex_unlock(&lockSource); 
 
                 pthread_mutex_lock(&lockDest);
                 enqueue(result, destBuffer);
                 pthread_mutex_unlock(&lockDest);
 
-                sem_post(&semReader);
+                if(result == -1) {
+                    sem_post(&semReader);
+                    break;
+                } else {
+                    sem_post(&semInsert);
+                    sem_post(&semReader);
+                }
+
+                
                 
             }
 
@@ -135,14 +140,15 @@ void* print(void* outputBuffer) {
     while(1) {
         sem_wait(&semReader);
 
-            if(sem_trywait(&semEnd) == 0) {
-                break;
-            }
-
             pthread_mutex_lock(&lockDest);
             int result = destBuffer->array[(destBuffer->tail++) % RING_SIZE];
-            printf("suma: %d \n", result);
             pthread_mutex_unlock(&lockDest);
+
+            if(result != -1) {
+                printf("suma: %d \n", result);
+            } else {
+                break;
+            }
 
 
         }
@@ -170,4 +176,12 @@ int main(int argc, char *argv[])
     pthread_join(t1, NULL);
 
     printf("Kraj \n");
+
+    pthread_mutex_destroy(&lockSource);
+    pthread_mutex_destroy(&lockDest);
+
+    sem_destroy(&semEnd);
+    sem_destroy(&semInsert);
+    sem_destroy(&semAdder);
+    sem_destroy(&semReader);
 }
